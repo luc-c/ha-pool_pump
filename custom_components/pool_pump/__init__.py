@@ -160,16 +160,56 @@ class PoolPumpManager:
         """Return string representation of this feed."""
         return "<{}(runs={})>".format(self.__class__.__name__, self._runs)
 
+    def _get_yesterday(self):
+        """Retourne le début et la fin de la veille (local time)."""
+        today = self._now.date()
+        yesterday = today - timedelta(days=1)
+        start = datetime.combine(yesterday, datetime.min.time())
+        end = datetime.combine(yesterday, datetime.max.time())
+        return dt_util.as_utc(start), dt_util.as_utc(end)
+
+    async def _get_max_temperature_yesterday(self):
+        """Récupère la température maximale de la veille."""
+        entity_id = self._hass.data[DOMAIN][ATTR_POOL_TEMPERATURE_ENTITY_ID]
+        start, end = self._get_yesterday()
+        # get_significant_states est synchrone, donc il faut l'exécuter dans un thread
+        states = await self._hass.async_add_executor_job(
+            get_significant_states,
+            self._hass,
+            start,
+            end,
+            entity_ids=[entity_id],
+            significant_changes_only=False,
+        )
+        max_temp = None
+        if entity_id in states:
+            for state in states[entity_id]:
+                try:
+                    temp = float(state.state)
+                    if max_temp is None or temp > max_temp:
+                        max_temp = temp
+                except ValueError:
+                    continue
+        return max_temp
+
+
     def _build_parameters(self):
         """Build parameters for pool pump manager."""
-        # Compute total duration based on Pool temperature
-        run_hours_total = self._pool_controler.duration(
-            float(
+        # Utilise la température max de la veille
+        max_temp = await self._get_max_temperature_yesterday()
+        if max_temp is None:
+            # fallback sur la température actuelle
+            max_temp = float(
                 self._hass.states.get(
                     self._hass.data[DOMAIN][ATTR_POOL_TEMPERATURE_ENTITY_ID]
                 ).state
             )
-        )
+            _LOGGER.warning("Impossible de récupérer la température max de la veille, utilisation de la température actuelle: %s", max_temp)
+        else:
+            _LOGGER.debug("Température max de la veille: %s", max_temp)
+
+        # Compute total duration based on Pool temperature
+        run_hours_total = self._pool_controler.duration(max_temp)
         _LOGGER.debug(
             "Daily filtering total duration: {} hours".format(run_hours_total)
         )
@@ -188,6 +228,7 @@ class PoolPumpManager:
         if await self.is_water_level_critical():
             _LOGGER.debug("Water level critical - pump should be off")
         else:
+            self._total_duration_in_hours = await self._build_parameters()
             for run in self._runs:
                 if run.run_now(self._now):
                     _LOGGER.debug("Pool pump should be on now: %s", run)
