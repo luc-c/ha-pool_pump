@@ -1,6 +1,6 @@
 {
   "domain": "pool_pump",
-  "name": "Pool Pump Manager",
+  "name": "Pool Pump Manager Mod.",
   "version": "0.0.3",
   "documentation": "https://github.com/luc-c/ha-pool_pump",
   "issue_tracker": "https://github.com/luc-c/ha-pool_pump/issues",
