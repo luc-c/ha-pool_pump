@@ -19,6 +19,8 @@ from homeassistant.const import (
     SUN_EVENT_SUNRISE,
     SUN_EVENT_SUNSET,
 )
+
+from homeassistant.components.recorder.history import get_significant_states
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.sun import get_astral_event_date, get_astral_event_next
 from homeassistant.util import dt as dt_util
@@ -151,7 +153,8 @@ class PoolPumpManager:
         )
         _LOGGER.debug("Solar noon is at: {}".format(noon))
 
-        self._total_duration_in_hours = self._build_parameters()
+        # Initialize total duration in hours as None; must be set asynchronously
+        self._total_duration_in_hours = None
 
         # Create runs with a pivot on solar noon
         self._runs = self._pool_controler.update_schedule(noon)
@@ -192,8 +195,7 @@ class PoolPumpManager:
                     continue
         return max_temp
 
-
-    def _build_parameters(self):
+    async def _build_parameters(self):
         """Build parameters for pool pump manager."""
         # Utilise la température max de la veille
         max_temp = await self._get_max_temperature_yesterday()
