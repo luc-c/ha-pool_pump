@@ -201,12 +201,21 @@ class PoolPumpManager:
         max_temp = await self._get_max_temperature_yesterday()
         if max_temp is None:
             # fallback sur la température actuelle
-            max_temp = float(
-                self._hass.states.get(
-                    self._hass.data[DOMAIN][ATTR_POOL_TEMPERATURE_ENTITY_ID]
-                ).state
+            state = self._hass.states.get(
+                self._hass.data[DOMAIN][ATTR_POOL_TEMPERATURE_ENTITY_ID]
             )
-            _LOGGER.warning("Impossible de récupérer la température max de la veille, utilisation de la température actuelle: %s", max_temp)
+            try:
+                max_temp = float(state.state)
+                _LOGGER.warning(
+                    "Impossible de récupérer la température max de la veille, utilisation de la température actuelle: %s",
+                    max_temp,
+                )
+            except (ValueError, TypeError, AttributeError):
+                _LOGGER.error(
+                    "Impossible de récupérer une température valide pour la piscine (état: %s). Abandon du calcul.",
+                    getattr(state, "state", None),
+                )
+                return None  # Ou une valeur par défaut, ex: 20.0
         else:
             _LOGGER.debug("Température max de la veille: %s", max_temp)
 
@@ -224,7 +233,7 @@ class PoolPumpManager:
 
         # Return total duration in hours
         return run_hours_total
-
+    
     async def check(self):
         """Check if the pool pump is supposed to run now."""
         if await self.is_water_level_critical():
